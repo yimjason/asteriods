@@ -1,0 +1,501 @@
+<!doctype html>
+<html>
+<head>
+	<title>Asteroids</title>
+<style>
+	html{background-color: #111; overflow: hidden;}
+
+	#planet{
+		position: absolute;
+		/*left: -500px;*/
+		bottom: 0px;
+    height:50%;
+    width:100%;
+    border-radius: 50% 50% 0 0;
+    /*-moz-border-radius: 2400px 2400px 0 0;*/
+    /*-webkit-border-radius: 2400px 2400px 0 0;*/
+    background: green; /* For browsers that do not support gradients */
+	  background: -webkit-radial-gradient(green, blue, cyan); /* Safari 5.1 to 6.0 */
+	  /*background: -o-radial-gradient(green, blue, cyan); /* For Opera 11.6 to 12.0 */
+	  /*background: -moz-radial-gradient(green, blue, cyan); /* For Firefox 3.6 to 15 */
+	  /*background: radial-gradient(green, blue, cyan); /* Standard syntax */
+    z-index: 90;
+	}
+
+	#messages{color: red; }
+	#player{ 
+		width: 39px;
+		height: 39px; 
+		position: absolute;
+		top: -100px; 
+		z-index: 1000;
+	}
+
+	.normal       { background-image: url("player_ship.png" );       animation: thrusters 1s steps(1);}
+	.boost        { background-image: url("player_ship.png" );       animation: thrusters 1s steps(3) infinite;}
+	.rotate_right { background-image: url("player_ship_right.png");  animation: thrusters 1s steps(1);}
+	.boost_right  { background-image: url("player_ship_right.png");  animation: thrusters 1s steps(3) infinite;}
+	.rotate_left  { background-image: url("player_ship_left.png" );	 animation: thrusters 1s steps(1);}
+	.boost_left   { background-image: url("player_ship_left.png" );	 animation: thrusters 1s steps(3) infinite;}
+	@keyframes thrusters { 100% { background-position: 0 -127px; }} 
+  
+	.laser{
+		height: 16px; 
+		width: 6px; 
+		border-radius: 50%; 
+		background-color: yellow; 
+		box-shadow: 0 0 4px 3px orange;
+		position: absolute;
+		top: -100px;
+		z-index: 100;
+	}
+
+	.asteroid_big{ 
+		background-image: url("asteroid_big.png"); 
+		width: 55px; 
+		height: 55px; 
+		background-size: 100%;
+		position: absolute; 
+		top: -100px; 
+		z-index: 100;
+	}
+		
+	.asteroid_small{ 
+		background-image: url("asteroid_big.png"); 
+		width: 25px; 
+		height: 25px; 
+		position: absolute; 
+		top: -100px; 
+		z-index: 100;
+		background-size: 100%;
+	}	
+
+
+
+	.star{ 
+		height: 1px; 
+		width: 1px; 
+		border-radius: 50%; 
+		background-color: lightblue; 
+		box-shadow: 0 0 1px 1px lightblue;
+		position: absolute;
+		top: -100px;
+		transform: rotate(45deg);
+		z-index: 1; 
+	}
+
+	@keyframes twinkle { 50% { background-color: #444; box-shadow: 0 0 2px 1px #111;}} 
+
+</style>
+</head>
+<body onkeydown="key_down(event)" onkeyup="key_up(event)">	
+	<p id="messages"></p> 
+	<!-- <div id="planet"></div> -->
+	<div id="projectiles"></div>
+	<div id="asteroids"></div>
+	<div id="stars"></div>
+	
+<script> 
+	//variables___________________________________________///////////////////////////
+	var window_max_x = window.innerWidth;
+	var window_max_y = window.innerHeight;
+
+	var player = {
+		x_pos: 700, 
+		y_pos: 400, 
+		speed: 0, 
+		rotational_speed: 0, 
+		angle: 0, 
+		dom: document.createElement('div'),
+		category: "player",
+		hp: 150,
+		damage: 0,
+		laser_ready: true,
+		laser_cooldown: 100,
+		laser_energy_max: 100,
+		laser_energy_remaining: 100};
+	player.dom.className = "normal";
+	player.dom.id = "player";
+	auto_reload();
+	
+ 	var projectiles = document.getElementById("projectiles");
+	var asteroids = document.getElementById("asteroids");
+	var all_movable_objs = []; 
+
+ 	var angle_adjustment = 90;
+ 	
+	var fps = 60;
+	var fps_in_ms = 1000/fps;
+	
+	//enter = 13;
+	// var left  = 37;
+	// var up    = 38;
+	// var right = 39;
+	// var down  = 40;
+	var left  = 65;
+	var up    = 87;
+	var right = 68;
+	var down  = 83;
+	var controls = {65: false, 68: false, 83: false, 87: false}; 
+
+	var messages = document.getElementById("messages");
+	
+	//main code___________________________________________///////////////////////////
+	create_environment();
+	var game = setInterval(function(){ 
+		update();
+		draw();  
+	}, fps_in_ms);
+	spawn_asteroids();
+
+
+ 
+	function update(){
+		messages.innerHTML = player.laser_energy_remaining;
+		if(player.hp <= 0){ clearInterval(auto_reload());}
+		objects_action_reaction(); 
+	}
+
+	function draw(){
+		for(var b = 0; b < all_movable_objs.length;b++){
+			rerender(all_movable_objs[b]);
+		}
+	}
+
+	//create functions___________________________________________///////////////////////////
+	function create_environment(){
+		create_stars(); 
+		create_player();
+	}
+ 
+ 	function create_player(){
+		all_movable_objs.push(player);
+		document.body.appendChild(player.dom);
+ 	}
+
+ 	function create_stars(){	
+		var star_colors = ["#fff5cc", "lightblue", "#ff999", "#ffffb3", "#ffb3ff","#ccccff", "#b3ffb3", "#ffcc99"];
+		var stars = {dom: document.getElementById("stars"), amount: 150};
+		for(var i = 0; i < stars.amount;i++){
+			var glow_duration = random_num(2,4);
+			var size = random_num(1, 3);
+			var luminosity = random_num(2,10);
+			var color = random_num(0,7);
+			var star = {dom: document.createElement('div'), color: color, size: size, luminosity: luminosity};
+			star.dom.className = "star";
+			star.dom.style.width = size+"px";
+			star.dom.style.height = size+"px";
+			star.dom.style.backgroundColor = star_colors[color];
+			star.dom.style.boxShadow = "0 0 "+luminosity+"px "+0+"px "+star_colors[color];
+			star.dom.style.top = Math.floor(Math.random()*window_max_y)+"px";
+			star.dom.style.left = Math.floor(Math.random()*window_max_x)+"px";
+			star.dom.style.borderRadius = "50%";
+			star.dom.style.transform = "rotate("+45+"deg)";
+			star.dom.style.animation = "twinkle "+glow_duration+"s infinite";
+			stars.dom.appendChild(star.dom);
+		}
+	}
+
+	function create_laser() {
+		var offset_x = 19;
+		var offset_y = 10;
+		var angular_rotation;  
+		if(random_num(1,6) > 3){angular_rotation = 15;}else{angular_rotation = -15;}
+		var laser = {
+			x_pos_origin: player.x_pos+offset_x, 
+			y_pos_origin: player.y_pos+offset_y, 
+			x_pos: player.x_pos+offset_x, 
+			y_pos: player.y_pos+offset_y, 
+			speed: 10, 
+			rotational_speed: 15,
+			angle: random_num(0,360), 
+			directional_angle: player.angle,
+			range: 864, 
+			dom: document.createElement('div'),
+			category: "laser",
+			hp: 1,
+			damage: 75};
+		laser.dom.className = "laser";
+		projectiles.appendChild(laser.dom);
+		all_movable_objs.push(laser);
+		fire_ammo();
+	}
+
+	function spawn_asteroids(){
+		var spawn_points = [
+			{x: 1390, y:  100, angle_range_min: 200, angle_range_max: 270}, 
+			{x:  100, y:  900, angle_range_min: 0,   angle_range_max: 60}, 
+			{x:  900, y:  900, angle_range_min: 300,  angle_range_max: 390},
+			{x:    100, y:    100, angle_range_min: 90, angle_range_max: 170},
+		];
+		var spawn_asteroids = setInterval(function(){
+			var angular_rotation = (random_num(1,6) > 3) ? 1 : -1;
+			var spawn_point = spawn_points[random_num(0,spawn_points.length-1)];
+			var asteroid = {
+				x_pos_origin: spawn_point.x, 
+	 			y_pos_origin: spawn_point.y, 
+				x_pos: spawn_point.x, 
+				y_pos: spawn_point.y, 
+				dom: document.createElement('div'),
+				speed: 1, 
+				rotational_speed: angular_rotation,
+				angle: random_num(0, 360),
+				directional_angle: random_num(spawn_point.angle_range_min, spawn_point.angle_range_max),
+				category: "asteroid",
+				range: 1500,
+				hp: 150,
+				damage: 150};
+			asteroid.dom.className = "asteroid_big";
+			all_movable_objs.push(asteroid);
+			asteroids.appendChild(asteroid.dom);
+		}, 1500);
+	}
+	
+	function spawn_small_asteroids(obj){
+		var x = obj.x_pos;
+		var y = obj.y_pos;
+		var angular_rotation = (random_num(1,6) > 3) ? 1 : -1;
+		var asteroid = {
+			x_pos_origin: x, 
+ 			y_pos_origin: y,
+			x_pos: x, 
+			y_pos: y, 
+			dom: document.createElement('div'),
+			speed: 0.5, 
+			rotational_speed: angular_rotation,
+			angle: random_num(0, 360),
+			directional_angle: random_num(0, 360),
+			category: "small asteroid",
+			range: 1500,
+			hp: 75,
+			damage: 75};
+		asteroid.dom.className = "asteroid_small";
+		all_movable_objs.push(asteroid);
+		asteroids.appendChild(asteroid.dom);
+	}
+
+
+	//update functions___________________________________________///////////////////////////
+	function objects_action_reaction() {
+		if(all_movable_objs.length >= 1){
+			for(var a = 0; a < all_movable_objs.length;a++){
+				calculate_motion(all_movable_objs[a]); 
+				calculate_object_reaction(all_movable_objs[a], a); 
+			}
+		}
+	} 
+
+	function calculate_object_reaction(obj, self) {
+		var a = Math.pow(Math.abs(obj.y_pos)-obj.y_pos_origin, 2);
+		var b = Math.pow(Math.abs(obj.x_pos)-obj.x_pos_origin, 2);
+		var c = Math.sqrt(a + b);
+	  
+		// collision detection
+		for(var i = 0;i<all_movable_objs.length;i++){
+			var moving_obj = all_movable_objs[i];
+			switch(true){
+				case (i == self): 
+				case (obj.category == "player" && moving_obj.category == "laser"):
+				case (obj.category == "laser" && moving_obj.category== "player"):
+				case (obj.category == "small asteroid" && moving_obj.category == "small asteroid"):
+				case (obj.category == "small asteroid" && moving_obj.category == "asteroid"):
+				case (obj.category == "asteroid" && moving_obj.category == "small asteroid"):
+					continue;
+			}
+			collides(obj, all_movable_objs[i], i);				
+			
+		} 
+		if(c >= obj.range || obj.hp <= 0){ 
+	  		obj.dom.style.display = "none";
+			obj.dom.parentElement.removeChild(obj.dom);
+			play_death_animation(obj);
+	  		all_movable_objs.splice(self,1);
+		} 
+	}
+	
+	
+	
+	function play_death_animation(obj){
+		switch(obj.category){
+			case 'asteroid':
+				spawn_small_asteroids(obj);
+				spawn_small_asteroids(obj); 
+			break;
+			case 'player':
+				clearInterval(game);
+			break;
+			case 'laser':
+				
+			break;
+		}
+	}
+ 
+	function calculate_motion(obj) {
+		if(obj.category == "asteroid" || obj.category == "laser" || obj.category == "small asteroid"){ 
+			obj.x_pos += obj.speed * Math.cos((obj.directional_angle-angle_adjustment)/180*Math.PI);
+			obj.y_pos += obj.speed * Math.sin((obj.directional_angle-angle_adjustment)/180*Math.PI); 
+			obj.angle += obj.rotational_speed; 
+		}else{
+			obj.x_pos += obj.speed * Math.cos((obj.angle-angle_adjustment)/180*Math.PI);
+			obj.y_pos += obj.speed * Math.sin((obj.angle-angle_adjustment)/180*Math.PI); 
+			obj.angle += obj.rotational_speed; 
+		}
+	}
+
+	function add_ammo(){ 
+		if(player.laser_energy_remaining < player.laser_energy_max){player.laser_energy_remaining++;}
+	}
+
+	function fire_ammo(){
+		player.laser_energy_remaining--;	
+	}
+ 
+	function collides(moving_obj, stationary_obj, index){ 
+		var moving_obj_top    = moving_obj.dom.offsetTop;
+		var moving_obj_bottom = moving_obj.dom.offsetTop + moving_obj.dom.clientHeight;
+		var moving_obj_left   = moving_obj.dom.offsetLeft;
+		var moving_obj_right  = moving_obj.dom.offsetLeft + moving_obj.dom.clientWidth;
+		var stationary_obj_top    = stationary_obj.dom.offsetTop;   
+		var stationary_obj_bottom = stationary_obj.dom.offsetTop + stationary_obj.dom.clientHeight;
+		var stationary_obj_left   = stationary_obj.dom.offsetLeft;
+		var stationary_obj_right  = stationary_obj.dom.offsetLeft + stationary_obj.dom.clientWidth;	
+ 		//if moving obj approaches stationary obj either top or bottom, then checks if it approaches it from left or right. this allows for the moving object to wrap around stationary obj corners.
+		if(moving_obj_top <= stationary_obj_bottom && moving_obj_top >= stationary_obj_top || moving_obj_bottom >= stationary_obj_top && moving_obj_bottom <= stationary_obj_bottom){ 
+			if(moving_obj_left <= stationary_obj_right && moving_obj_left >= stationary_obj_left || moving_obj_right >= stationary_obj_left && moving_obj_right <= stationary_obj_right){
+				//after collision, reverse the speed applied earlier
+				// switch(moving_obj.category){
+				// 	case "player":
+				// 		switch(true){  
+				// 			case moving_obj_top    <= stationary_obj_top:     
+				// 				player.y_pos-= player.speed;
+				// 				break;
+				// 			case moving_obj_left   <= stationary_obj_left:    
+				// 				player.x_pos-= player.speed;
+				// 				break;
+				// 			case moving_obj_right  >= stationary_obj_right:   
+				// 				player.x_pos+= player.speed;
+				// 				break;	
+				// 			case moving_obj_bottom >= stationary_obj_bottom:	
+				// 				player.y_pos+= player.speed;
+				// 				break;
+				// 			}
+				// 			break;
+				// 	default: 
+				// }	
+				calculate_damage(moving_obj, stationary_obj);
+			}
+		}
+	}
+
+	function calculate_damage(moving_obj, stationary_obj){
+		stationary_obj.hp -= moving_obj.damage;
+		moving_obj.hp -= stationary_obj.damage;
+	}
+ 
+ 	//draw function___________________________________________///////////////////////////
+	function rerender(obj) {
+		obj.dom.style.top  = obj.y_pos.toString() + "px";
+		obj.dom.style.left = obj.x_pos.toString() + "px";
+		obj.dom.style.transform = "rotate("+obj.angle+"deg)";
+	}
+ 
+
+	
+	//player functionalities___________________________________________///////////////////////////
+	function auto_reload(){
+		var recharge = setInterval(function(){
+			add_ammo();
+		}, 1250);
+	}
+
+	function cast_cooldown_timer(){
+		player.laser_ready = false;
+		var recharge = setTimeout(function(){
+			player.laser_ready = true;
+		}, player.laser_cooldown);
+	}
+
+	function key_down(event) {
+		var key_down = event.which || event.keyCode;
+		if(player.hp > 0){
+			
+			if(key_down in controls){
+	      controls[key_down] = true;
+	      switch(true){
+	      	case controls[left] && controls[down]: 
+	      		player.dom.className = "normal"; 
+	      		player.speed = -2; 
+	      		player.rotational_speed = -2;
+	      		break; 	  
+	      	case controls[right] && controls[down]:
+	      		player.dom.className = "normal"; 
+	      		player.speed = -2; 
+	      		player.rotational_speed = 2;
+	      		break; 	
+	      	case controls[left] && controls[up]:
+	      		player.dom.className = "boost_left"; 
+	      		player.speed = 4; 
+	      		player.rotational_speed = -2;
+	      		break; 		
+	      	case controls[right] && controls[up]:
+	      		player.dom.className = "boost_right"; 
+	      		player.speed = 4; 
+	      		player.rotational_speed = 2;
+	      		break; 	
+					case controls[right]: 
+						player.dom.className = "rotate_right"; 
+						player.speed = 0;
+						player.rotational_speed = 3;
+						break;
+					case controls[left]: 
+						player.dom.className = "rotate_left";  
+						player.speed = 0;
+						player.rotational_speed = -3;
+						break;	
+					case controls[down]: 
+		      	player.dom.className = "normal";   
+		      	player.speed = -2;
+		      	player.rotational_speed = 0;
+		      	break;	
+					case controls[up]: 
+						player.dom.className = "boost"; 
+						player.speed = 4; 
+						player.rotational_speed = 0;
+		      default:
+      	}
+    	}
+  	}
+	}
+
+	function key_up(event){
+		var key_up = event.which || event.keyCode;
+		if (key_up in controls) {
+      controls[key_up] = false;
+			if(!controls[left] || !controls[right]){
+				player.rotational_speed = 0;
+				if(controls[up]){
+					player.dom.className = "boost";		
+				}else{player.dom.className = "normal";} 
+
+			} 
+			if(key_up == up || key_up == down){player.speed = 0;player.dom.className = "normal";} 
+		} 
+	}	
+	document.addEventListener('mouseup', fire_weapon);
+	  
+	function fire_weapon(event){
+		if(player.hp > 0 && player.laser_energy_remaining > 0 && player.laser_ready){
+	  		create_laser();
+	  		cast_cooldown_timer();
+	  	}
+		
+	}
+
+
+	//helpers___________________________________________///////////////////////////
+	function random_num(min, max) {
+	  return Math.floor(Math.random() * (max - min + 1)) + min;
+	}
+</script>
+</body>
+</html>
